@@ -1,5 +1,5 @@
 """
-Visualization Dashboard for Geometry of Awareness v1.2
+Visualization Dashboard for Geometry of Awareness v1.3
 
 Generates comprehensive visualizations of:
 - Dynamics (phase space, energy, salience, stability)
@@ -7,6 +7,8 @@ Generates comprehensive visualizations of:
 - Metric properties (condition number, eigenvalues, curvature)
 - Lyapunov stability (eigenvalue distributions)
 - Phase diagrams (trust vs trauma parameter space)
+- Signed coherence analysis (negative couplings, inhibitory potentials, v1.3 metrics)
+- Numerical summary dashboard (tabular data integration)
 """
 
 import sys
@@ -287,6 +289,332 @@ def plot_metric_geometry(model, n_steps=500):
     plt.tight_layout()
     return fig
 
+def plot_signed_coherence_analysis(model, n_steps=800, figsize=(16, 10)):
+    """Plot v1.3 signed coherence metrics: negative couplings, inhibitory potential, repulsion dynamics"""
+    model.reset()
+    x = np.random.uniform(-0.3, 0.3, model.n)
+    
+    # Track signed metrics over time
+    signed_fractions = []
+    inhibitory_strengths = []
+    
+    for step_idx in range(n_steps):
+        x, _, _ = model.step(x)
+        signed_fractions.append(model.signed_fraction())
+        inhibitory_strengths.append(model.inhibitory_strength())
+    
+    # Get final coherence matrix
+    C_final = model.C.copy()
+    
+    fig = plt.figure(figsize=figsize)
+    gs = fig.add_gridspec(3, 3, hspace=0.35, wspace=0.3)
+    
+    # 1. Signed fraction evolution (% of negative couplings)
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax1.plot(signed_fractions, 'r-', linewidth=2, label='Signed Fractionᵥ1.3')
+    ax1.fill_between(range(len(signed_fractions)), signed_fractions, alpha=0.3, color='red')
+    ax1.set_xlabel('Step')
+    ax1.set_ylabel('Fraction Negative')
+    ax1.set_title('Signed Fraction: % Inhibitory Couplings')
+    ax1.set_ylim([0, 1])
+    ax1.grid(True, alpha=0.3)
+    ax1.legend()
+    
+    # 2. Inhibitory strength evolution (sum of |C_ij| for negatives)
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.plot(inhibitory_strengths, 'orange', linewidth=2, label='Inhibitory Strength')
+    ax2.fill_between(range(len(inhibitory_strengths)), inhibitory_strengths, alpha=0.3, color='orange')
+    ax2.set_xlabel('Step')
+    ax2.set_ylabel('Sum of |Cᵢⱼ<0|')
+    ax2.set_title('Inhibitory Strength: Total Repulsion Magnitude')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+    
+    # 3. Potential comparison: V_total vs V_inhib
+    ax3 = fig.add_subplot(gs[0, 2])
+    V_total = np.array(model.history['V'])
+    V_inhib = np.array(model.history['V_inhib'])
+    ax3.plot(V_total, 'b-', linewidth=2, alpha=0.7, label='V_total')
+    ax3.plot(V_inhib, 'r--', linewidth=2, alpha=0.7, label='V_inhib')
+    ax3.fill_between(range(len(V_inhib)), V_inhib, alpha=0.2, color='red')
+    ax3.set_xlabel('Step')
+    ax3.set_ylabel('Potential Energy')
+    ax3.set_title('Inhibitory Potential Contribution')
+    ax3.grid(True, alpha=0.3)
+    ax3.legend()
+    
+    # 4. Coherence matrix heatmap (initial)
+    C_init = np.zeros_like(model.C)
+    C_init[0, 2] = C_init[2, 0] = -0.45  # Demo seed
+    np.fill_diagonal(C_init, 0.01)
+    
+    ax4 = fig.add_subplot(gs[1, 0])
+    im4 = ax4.imshow(C_init, cmap='RdBu_r', vmin=-1, vmax=1, aspect='auto')
+    ax4.set_title('Initial Coherence C(t=0)\nDemo Seed: C[0,2]=-0.45')
+    ax4.set_xlabel('Dimension j')
+    ax4.set_ylabel('Dimension i')
+    plt.colorbar(im4, ax=ax4, label='C_ij')
+    
+    # 5. Coherence matrix heatmap (final)
+    ax5 = fig.add_subplot(gs[1, 1])
+    im5 = ax5.imshow(C_final, cmap='RdBu_r', vmin=-1, vmax=1, aspect='auto')
+    ax5.set_title('Final Coherence C(t=final)\nAfter Learning')
+    ax5.set_xlabel('Dimension j')
+    ax5.set_ylabel('Dimension i')
+    plt.colorbar(im5, ax=ax5, label='C_ij')
+    
+    # 6. Coherence change (final - initial)
+    ax6 = fig.add_subplot(gs[1, 2])
+    C_delta = C_final - C_init
+    im6 = ax6.imshow(C_delta, cmap='coolwarm', aspect='auto')
+    ax6.set_title('Coherence Change ΔC = C(final) - C(init)')
+    ax6.set_xlabel('Dimension j')
+    ax6.set_ylabel('Dimension i')
+    plt.colorbar(im6, ax=ax6, label='ΔC_ij')
+    
+    # 7. Trajectory with emotion-narrative (repulsion wedge)
+    ax7 = fig.add_subplot(gs[2, 0])
+    traj = np.array(model.history['x'])
+    ax7.plot(traj[:, 0], traj[:, 2], 'b-', alpha=0.6, linewidth=1, label='Trajectory')
+    ax7.scatter(traj[0, 0], traj[0, 2], c='green', s=100, marker='o', zorder=5, label='Start')
+    ax7.scatter(traj[-1, 0], traj[-1, 2], c='red', s=100, marker='x', zorder=5, label='End')
+    ax7.axhline(0, color='gray', linestyle='--', alpha=0.3)
+    ax7.axvline(0, color='gray', linestyle='--', alpha=0.3)
+    ax7.set_xlabel('Emotion (x₀)')
+    ax7.set_ylabel('Narrative (x₂)')
+    ax7.set_title('Emotion-Narrative Coupling\n(C[0,2] Repulsion Wedge)')
+    ax7.grid(True, alpha=0.3)
+    ax7.legend()
+    
+    # 8. Negative coupling count
+    ax8 = fig.add_subplot(gs[2, 1])
+    neg_counts = [np.sum(C < 0) for C in [model.history['C'][i] for i in range(0, len(model.history['C']), max(1, len(model.history['C'])//100))]]
+    steps_sample = np.linspace(0, n_steps-1, len(neg_counts), dtype=int)
+    ax8.plot(steps_sample, neg_counts, 'purple', marker='o', linewidth=2, markersize=4)
+    ax8.fill_between(steps_sample, neg_counts, alpha=0.3, color='purple')
+    ax8.set_xlabel('Step')
+    ax8.set_ylabel('Count of Negative Couplings')
+    ax8.set_title('Number of Inhibitory Links Over Time')
+    ax8.grid(True, alpha=0.3)
+    
+    # 9. Statistics box: numerical summary
+    ax9 = fig.add_subplot(gs[2, 2])
+    ax9.axis('off')
+    
+    final_signed_frac = signed_fractions[-1]
+    final_inhib_str = inhibitory_strengths[-1]
+    final_V_inhib = V_inhib[-1]
+    final_C_neg_count = np.sum(C_final < 0)
+    final_C_neg_mean = np.mean(C_final[C_final < 0]) if final_C_neg_count > 0 else 0
+    
+    stats_text = f"""
+    ╔═══════════════════════════════╗
+    ║   V1.3 NUMERICAL SUMMARY      ║
+    ╠═══════════════════════════════╣
+    ║ Signed Fraction:    {final_signed_frac:.4f}    ║
+    ║ Inhib. Strength:    {final_inhib_str:.4f}    ║
+    ║ V_inhib (final):    {final_V_inhib:.4f}    ║
+    ║ Neg. Links:         {final_C_neg_count:3d} / {model.n*(model.n-1)//2:3d}    ║
+    ║ Mean C_neg:         {final_C_neg_mean:.4f}    ║
+    ║ Steps Simulated:    {n_steps}      ║
+    ╚═══════════════════════════════╝
+    """
+    ax9.text(0.5, 0.5, stats_text, fontfamily='monospace', fontsize=10,
+            verticalalignment='center', horizontalalignment='center',
+            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
+    
+    fig.suptitle(f'Signed Coherence Analysis: v1.3 Inhibitory Dynamics (n={model.n})', 
+                fontsize=14, fontweight='bold')
+    
+    return fig
+
+def plot_numerical_dashboard(model, n_steps=500, figsize=(16, 12)):
+    """Comprehensive numerical dashboard with multiple metric summaries"""
+    model.reset()
+    x = np.random.uniform(-0.3, 0.3, model.n)
+    
+    # Run dynamics and collect comprehensive data
+    data = {
+        'steps': [],
+        'V_total': [],
+        'V_H': [], 'V_R': [], 'V_T': [], 'V_inhib': [],
+        'lambda': [],
+        'cond': [],
+        'signed_frac': [],
+        'inhib_strength': [],
+        'x_norm': [],  # norm of x
+        'grad_norm': []  # norm of gradient
+    }
+    
+    for step_idx in range(n_steps):
+        # Compute gradient
+        grad = np.zeros(model.n)
+        eps = 1e-5
+        for i in range(model.n):
+            xp = x.copy(); xp[i] += eps
+            xm = x.copy(); xm[i] -= eps
+            grad[i] = (model.potential(xp)[0] - model.potential(xm)[0]) / (2*eps)
+        
+        x, lam, cond = model.step(x)
+        V_total, (V_H, V_R, V_T, V_inhib) = model.potential(x)
+        
+        data['steps'].append(step_idx)
+        data['V_total'].append(V_total)
+        data['V_H'].append(V_H)
+        data['V_R'].append(V_R)
+        data['V_T'].append(V_T)
+        data['V_inhib'].append(V_inhib)
+        data['lambda'].append(lam)
+        data['cond'].append(cond)
+        data['signed_frac'].append(model.signed_fraction())
+        data['inhib_strength'].append(model.inhibitory_strength())
+        data['x_norm'].append(np.linalg.norm(x))
+        data['grad_norm'].append(np.linalg.norm(grad))
+    
+    # Convert to numpy arrays for easier handling
+    for key in data:
+        data[key] = np.array(data[key])
+    
+    fig = plt.figure(figsize=figsize)
+    gs = fig.add_gridspec(3, 4, hspace=0.4, wspace=0.3)
+    
+    # Row 1: Energy and Forces
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax1.plot(data['steps'], data['V_total'], 'k-', linewidth=2, label='V_total')
+    ax1.plot(data['steps'], data['V_H'], 'g--', linewidth=1, alpha=0.7, label='V_H')
+    ax1.plot(data['steps'], data['V_R'], 'r--', linewidth=1, alpha=0.7, label='V_R')
+    ax1.set_ylabel('Potential Component')
+    ax1.set_title('Basin Potentials')
+    ax1.legend(fontsize=8)
+    ax1.grid(True, alpha=0.3)
+    
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.plot(data['steps'], data['V_inhib'], 'orange', linewidth=2, label='V_inhib (v1.3)')
+    ax2.fill_between(data['steps'], data['V_inhib'], alpha=0.3, color='orange')
+    ax2.set_ylabel('Inhibitory Potential')
+    ax2.set_title('Repulsion Dynamics (v1.3)')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(fontsize=8)
+    
+    ax3 = fig.add_subplot(gs[0, 2])
+    ax3.plot(data['steps'], data['lambda'], 'purple', linewidth=1.5, label='Salience λ')
+    ax3.set_ylabel('Salience Gate')
+    ax3.set_ylim([0, 1.05])
+    ax3.set_title('Learning Rate Modulation')
+    ax3.grid(True, alpha=0.3)
+    ax3.legend(fontsize=8)
+    
+    ax4 = fig.add_subplot(gs[0, 3])
+    ax4.semilogy(data['steps'], data['cond'], 'b-', linewidth=1.5, label='κ(g)')
+    ax4.set_ylabel('Condition Number')
+    ax4.set_title('Metric Anisotropy')
+    ax4.grid(True, alpha=0.3, which='both')
+    ax4.legend(fontsize=8)
+    
+    # Row 2: v1.3 Specific Metrics
+    ax5 = fig.add_subplot(gs[1, 0])
+    ax5.plot(data['steps'], data['signed_frac'], 'r-', linewidth=2, label='Signed Fraction')
+    ax5.fill_between(data['steps'], data['signed_frac'], alpha=0.3, color='red')
+    ax5.set_ylabel('Fraction Negative')
+    ax5.set_ylim([0, 1])
+    ax5.set_title('Negative Coupling Fraction (v1.3)')
+    ax5.grid(True, alpha=0.3)
+    ax5.legend(fontsize=8)
+    
+    ax6 = fig.add_subplot(gs[1, 1])
+    ax6.plot(data['steps'], data['inhib_strength'], 'darkred', linewidth=2, label='Inhib. Strength')
+    ax6.fill_between(data['steps'], data['inhib_strength'], alpha=0.3, color='darkred')
+    ax6.set_ylabel('Sum |C_ij<0|')
+    ax6.set_title('Inhibitory Strength (v1.3)')
+    ax6.grid(True, alpha=0.3)
+    ax6.legend(fontsize=8)
+    
+    ax7 = fig.add_subplot(gs[1, 2])
+    ax7.plot(data['steps'], data['x_norm'], 'teal', linewidth=1.5, label='||x(t)||')
+    ax7.fill_between(data['steps'], data['x_norm'], alpha=0.3, color='teal')
+    ax7.set_ylabel('State Norm')
+    ax7.set_title('State Space Magnitude')
+    ax7.grid(True, alpha=0.3)
+    ax7.legend(fontsize=8)
+    
+    ax8 = fig.add_subplot(gs[1, 3])
+    ax8.plot(data['steps'], data['grad_norm'], 'brown', linewidth=1.5, label='||∇V||')
+    ax8.fill_between(data['steps'], data['grad_norm'], alpha=0.3, color='brown')
+    ax8.set_ylabel('Gradient Magnitude')
+    ax8.set_title('Potential Landscape Steepness')
+    ax8.grid(True, alpha=0.3)
+    ax8.legend(fontsize=8)
+    
+    # Row 3: Combined and Comparative
+    ax9 = fig.add_subplot(gs[2, 0:2])
+    ax9_twin = ax9.twinx()
+    ax9.plot(data['steps'], data['V_total'], 'k-', linewidth=2.5, label='V_total', zorder=3)
+    ax9_twin.plot(data['steps'], data['signed_frac'], 'r--', linewidth=2, alpha=0.7, label='Signed Frac', zorder=2)
+    ax9.set_xlabel('Step')
+    ax9.set_ylabel('Total Potential V(x)', color='k')
+    ax9_twin.set_ylabel('Signed Fraction', color='r')
+    ax9.set_title('Potential vs Inhibition Correlation')
+    ax9.grid(True, alpha=0.3)
+    ax9.tick_params(axis='y', labelcolor='k')
+    ax9_twin.tick_params(axis='y', labelcolor='r')
+    lines1, labels1 = ax9.get_legend_handles_labels()
+    lines2, labels2 = ax9_twin.get_legend_handles_labels()
+    ax9.legend(lines1+lines2, labels1+labels2, fontsize=9, loc='upper right')
+    
+    ax10 = fig.add_subplot(gs[2, 2:4])
+    # Create numerical summary table
+    ax10.axis('off')
+    
+    # Compute aggregate statistics
+    summary_stats = {
+        'Mean V_total': np.mean(data['V_total']),
+        'Final Signed Frac': data['signed_frac'][-1],
+        'Mean Inhib Strength': np.mean(data['inhib_strength']),
+        'Max Salience': np.max(data['lambda']),
+        'Mean κ(g)': np.mean(data['cond']),
+        'Total V_inhib': np.sum(data['V_inhib']),
+        'Mean ||x||': np.mean(data['x_norm']),
+        'Mean ||∇V||': np.mean(data['grad_norm']),
+        'Final ||x||': data['x_norm'][-1],
+        'Basin Stability': 'Valid' if data['V_total'][-1] < np.mean(data['V_total']) else 'Equilibrating'
+    }
+    
+    table_data = []
+    for key, val in summary_stats.items():
+        if isinstance(val, (int, np.integer)):
+            table_data.append([key, f"{val}"])
+        elif isinstance(val, str):
+            table_data.append([key, val])
+        else:
+            table_data.append([key, f"{val:.6f}"])
+    
+    table = ax10.table(cellText=table_data, colLabels=['Metric', 'Value'],
+                      cellLoc='left', loc='center', 
+                      colWidths=[0.5, 0.5])
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1, 2)
+    
+    # Style header
+    for i in range(2):
+        table[(0, i)].set_facecolor('#4CAF50')
+        table[(0, i)].set_text_props(weight='bold', color='white')
+    
+    # Alternate row colors
+    for i in range(1, len(table_data) + 1):
+        for j in range(2):
+            if i % 2 == 0:
+                table[(i, j)].set_facecolor('#f0f0f0')
+            else:
+                table[(i, j)].set_facecolor('#ffffff')
+    
+    ax10.set_title('Numerical Summary Statistics', fontweight='bold', fontsize=11, pad=20)
+    
+    fig.suptitle(f'Numerical Dashboard: Integrated v1.3 Metrics (n={model.n}, {n_steps} steps)',
+                fontsize=14, fontweight='bold')
+    
+    return fig
+
 def plot_lyapunov_stability(model, figsize=(12, 8)):
     """Plot Lyapunov eigenvalue distributions across basins and trust levels"""
     fig, axes = plt.subplots(2, 2, figsize=figsize)
@@ -325,7 +653,7 @@ def plot_lyapunov_stability(model, figsize=(12, 8)):
 def main():
     """Generate all visualizations"""
     print("\n" + "="*70)
-    print("VISUALIZATION DASHBOARD: Geometry of Awareness v1.2")
+    print("VISUALIZATION DASHBOARD: Geometry of Awareness v1.3")
     print("="*70)
     
     # Create output directory
@@ -370,6 +698,18 @@ def main():
     fig6 = plot_lyapunov_stability(model)
     fig6.savefig('visualizations/06_lyapunov_stability.png', dpi=150, bbox_inches='tight')
     print("    [OK] Saved: visualizations/06_lyapunov_stability.png")
+    
+    # 7. Signed coherence analysis (v1.3)
+    print("\n[7] Generating signed coherence analysis (v1.3)...")
+    fig7 = plot_signed_coherence_analysis(model, n_steps=800)
+    fig7.savefig('visualizations/07_signed_coherence_v13.png', dpi=150, bbox_inches='tight')
+    print("    [OK] Saved: visualizations/07_signed_coherence_v13.png")
+    
+    # 8. Numerical dashboard (v1.3)
+    print("\n[8] Generating numerical dashboard (v1.3)...")
+    fig8 = plot_numerical_dashboard(model, n_steps=500)
+    fig8.savefig('visualizations/08_numerical_dashboard_v13.png', dpi=150, bbox_inches='tight')
+    print("    [OK] Saved: visualizations/08_numerical_dashboard_v13.png")
     
     print("\nTo view: Open PNG files in Windows Explorer or your image viewer")
     print("="*70 + "\n")

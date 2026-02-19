@@ -6,45 +6,43 @@ from scipy.spatial.distance import cdist
 
 class GeometryOfAwareness:
     """
-    Geometry of Awareness Framework v1.3
-    - Signed coherence C_ij ∈ ℝ (positive → integration, negative → repulsion)
-    - Inhibitory potential V_inhib from negative couplings (fear suppresses curiosity)
-    - Laplacian SPD metric, salience gate, competing basins, Lyapunov, therapy, n=15 support
-    - Christoffel symbols, scalar curvature, full Riemannian geometry
+    Geometry of Awareness Framework v1.2
+    - n=7 or n=15 dimensional manifold
+    - Salience-gated Hebbian metric learning
+    - Laplacian SPD metric (guaranteed stable)
+    - State-dependent metric C(x) with RBF kernel
+    - Riemannian geometry: Christoffel symbols, scalar curvature
+    - Competing basins (Healthy, Rigid, Trauma)
+    - Lyapunov stability analysis
+    - Therapy protocol support
+    - Phase-diagram sweep utilities
     """
     def __init__(self, n=7, alpha=0.65, rho=0.018, eta0=0.055, 
                  trust_base=0.65, trust_vol=0.12, surprisal_amp=0.8,
                  emo_weight=1.2, grad_weight=0.9, social_weight=0.7,
-                 inhib_beta=0.8, w_T=4.0, beta_rbf=0.5, sigma_rbf=0.3, seed=42):
+                 w_T=4.0, beta_rbf=0.5, sigma_rbf=0.3, seed=42):
         np.random.seed(seed)
         self.n = n
         self.alpha = alpha
         self.rho = rho
         self.eta0 = eta0
-        self.C = np.zeros((n, n)) + 0.01 * np.eye(n)
-        self.inhib_beta = inhib_beta
-        
-        # === DEMO: Seed negative coupling for "fear suppresses curiosity" ===
-        # Example: Emotion (x0) ↔ Narrative (x2) repulsion
-        if n >= 3:
-            self.C[0, 2] = -0.45
-            self.C[2, 0] = -0.45
-        
+        self.C = np.zeros((n, n)) + 0.01 * np.eye(n)  # small diagonal bias
         self.g = None
         self.update_metric()
         
         # RBF kernel for state-dependent metric
-        self.beta_rbf = beta_rbf
-        self.sigma_rbf = sigma_rbf
-        self.rbf_centers = []
+        self.beta_rbf = beta_rbf  # strength of local perturbations
+        self.sigma_rbf = sigma_rbf  # width of RBF kernel
+        self.rbf_centers = []  # recent history points
         
         # Basins (n=7 or n=15 support)
         if n == 7:
-            self.mu_H = np.array([0.55, 0.60, 0.55, 0.58, 0.45, 0.50, 0.35])
-            self.mu_R = np.array([0.25, 0.70, 0.30, 0.75, 0.75, 0.40, 0.20])
-            self.mu_T = np.array([-0.6, -0.4, -0.5, -0.3, -0.7, 0.1, -0.2])
+            self.mu_H = np.array([0.55, 0.60, 0.55, 0.58, 0.45, 0.50, 0.35])  # Healthy
+            self.mu_R = np.array([0.25, 0.70, 0.30, 0.75, 0.75, 0.40, 0.20])  # Rigid
+            self.mu_T = np.array([-0.6, -0.4, -0.5, -0.3, -0.7, 0.1, -0.2])   # Trauma
             self.dim_names = ['Emotion', 'Memory', 'Narrative', 'Belief', 'Identity', 'Archetypal', 'Sensory']
         elif n == 15:
+            # Extended to 15 dimensions: pad with plausible basin centers
             self.mu_H = np.concatenate([np.array([0.55, 0.60, 0.55, 0.58, 0.45, 0.50, 0.35]),
                                        np.array([0.50, 0.45, 0.55, 0.48, 0.42, 0.52, 0.49, 0.45])])
             self.mu_R = np.concatenate([np.array([0.25, 0.70, 0.30, 0.75, 0.75, 0.40, 0.20]),
@@ -61,6 +59,7 @@ class GeometryOfAwareness:
         self.w_T = w_T
         self.sigma_T = 0.82
         
+        # Salience parameters
         self.trust_base = trust_base
         self.trust_vol = trust_vol
         self.surprisal_amp = surprisal_amp
@@ -68,11 +67,10 @@ class GeometryOfAwareness:
         self.grad_weight = grad_weight
         self.social_weight = social_weight
         
-        self.history = {'x': [], 'C': [], 'cond_g': [], 'lambda': [], 'V': [], 'V_inhib': []}
+        self.history = {'x': [], 'C': [], 'cond_g': [], 'lambda': [], 'V': []}
         self.seed = seed
     
     def update_metric(self):
-        """Update Laplacian-based SPD metric from coherence"""
         W = np.maximum(self.C, 0)
         D = np.diag(W.sum(axis=1))
         L = D - W
@@ -83,18 +81,14 @@ class GeometryOfAwareness:
             self.g += 1e-6 * np.eye(self.n)
     
     def reset(self, trust_base=None, w_T=None):
-        """Reset state for clean reuse in sweeps"""
+        """Reset state for clean reuse in sweeps (replaces __init__ call in loop)"""
         if trust_base is not None:
             self.trust_base = trust_base
         if w_T is not None:
             self.w_T = w_T
         self.C = np.zeros((self.n, self.n)) + 0.01 * np.eye(self.n)
-        # Re-seed negative coupling for demo
-        if self.n >= 3:
-            self.C[0, 2] = -0.45
-            self.C[2, 0] = -0.45
         self.rbf_centers = []
-        self.history = {'x': [], 'C': [], 'cond_g': [], 'lambda': [], 'V': [], 'V_inhib': []}
+        self.history = {'x': [], 'C': [], 'cond_g': [], 'lambda': [], 'V': []}
         self.update_metric()
     
     def compute_C_state_dependent(self, x):
@@ -106,7 +100,7 @@ class GeometryOfAwareness:
                 dist_sq = np.sum((x - center)**2)
                 rbf_weight = self.beta_rbf * np.exp(-dist_sq / (2 * self.sigma_rbf**2))
                 C_local += rbf_weight * np.outer(center, center) * 0.01  # small amplitude
-        return C_local
+        return np.maximum(C_local, 0)
     
     def compute_g_state_dependent(self, x):
         """Compute state-dependent metric g(x) from local C(x)"""
@@ -130,38 +124,19 @@ class GeometryOfAwareness:
         return np.linalg.cond(g_x)
     
     def potential(self, x):
-        """Compute total potential V = V_H + V_R + V_T + inhibitory"""
         x = np.asarray(x).reshape(-1)
         V_H = self.w_H * np.sum((x - self.mu_H)**2)
         V_R = self.w_R * np.sum((x - self.mu_R)**2)
-        dist_T = np.sum((x - self.mu_T)**2)
-        V_T = self.w_T * np.exp(-0.5 * dist_T / self.sigma_T**2)
-        
-        # Inhibitory potential from negative couplings
-        V_inhib = 0.0
-        for i in range(self.n):
-            for j in range(i+1, self.n):
-                if self.C[i, j] < 0:
-                    V_inhib += abs(self.C[i, j]) * x[i] * x[j]  # bilinear repulsion
-        
-        V_total = V_H + V_R + V_T + self.inhib_beta * V_inhib
-        return V_total, (V_H, V_R, V_T, V_inhib)
+        V_T = self.w_T * np.exp(-0.5 * np.sum((x - self.mu_T)**2) / self.sigma_T**2)
+        return V_H + V_R + V_T, (V_H, V_R, V_T)
     
     def salience(self, x, surprisal=0.0, trust=None):
-        """Salience gate λ(t)"""
         if trust is None:
             trust = np.clip(self.trust_base + np.random.normal(0, self.trust_vol), 0.1, 1.0)
         x1 = abs(x[0])  # emotion
-        _, (VH, VR, VT, V_inhib) = self.potential(x)
-        
-        # Numerical gradient
-        grad = np.zeros(self.n)
-        eps = 1e-5
-        for i in range(self.n):
-            xp = x.copy(); xp[i] += eps
-            xm = x.copy(); xm[i] -= eps
-            grad[i] = (self.potential(xp)[0] - self.potential(xm)[0]) / (2*eps)
-        grad_norm = np.linalg.norm(grad)
+        _, (VH, VR, VT) = self.potential(x)
+        gradV = np.gradient([self.potential(x + 1e-4*np.eye(self.n)[i])[0] for i in range(self.n)])[0]
+        grad_norm = np.linalg.norm(gradV)
         
         arg = (self.emo_weight * x1 +
                self.grad_weight * grad_norm +
@@ -170,7 +145,6 @@ class GeometryOfAwareness:
         return 1 / (1 + np.exp(-arg))  # logistic
     
     def step(self, x0, surprisal=0.0, trust=None, dt=0.08, therapy_mode=False):
-        """One dynamics step"""
         lam = self.salience(x0, surprisal, trust)
         if therapy_mode:
             lam = np.clip(lam * 1.15, 0.4, 0.78)  # guided moderate band
@@ -178,7 +152,7 @@ class GeometryOfAwareness:
         # normalize x
         x_norm = np.tanh(x0)  # [-1,1]
         
-        # Hebbian update (now signed!)
+        # Hebbian update
         delta = np.outer(x_norm, x_norm)
         self.C = (1 - self.rho) * self.C + self.eta0 * lam * delta
         np.fill_diagonal(self.C, np.maximum(self.C.diagonal(), 0.01))
@@ -203,13 +177,12 @@ class GeometryOfAwareness:
         
         # log
         cond = self.get_condition_number()
-        Vtot, (_, _, _, V_inhib) = self.potential(x1)
+        Vtot, _ = self.potential(x1)
         self.history['x'].append(x1.copy())
         self.history['C'].append(self.C.copy())
         self.history['cond_g'].append(cond)
         self.history['lambda'].append(lam)
         self.history['V'].append(Vtot)
-        self.history['V_inhib'].append(V_inhib)
         
         return x1, lam, cond
     
@@ -219,10 +192,20 @@ class GeometryOfAwareness:
         
         Pure function: no mutation of state.
         Computed analytically (not numerically) to avoid noise amplification.
+        
+        Args:
+            x0: Point at which to evaluate Jacobian
+            trust: Trust parameter (not used, kept for API compatibility)
+            eps: Finite-difference step for Hessian (default 1e-5)
+            dt: Discrete time step (default 0.08)
+        
+        Returns:
+            J: n×n Jacobian matrix of the discrete map dx -> x_next
         """
         x0 = np.asarray(x0).flatten().copy()
         
         # Compute Hessian of potential via finite differences
+        # H[i,j] = ∂²V/∂x_i∂x_j
         H = np.zeros((self.n, self.n))
         for i in range(self.n):
             for j in range(self.n):
@@ -248,13 +231,14 @@ class GeometryOfAwareness:
         return J
     
     def compute_christoffel(self, x, eps=1e-4):
-        """Christoffel symbols Γᵏᵢⱼ"""
+        """Christoffel symbols Γᵏᵢⱼ = (1/2) gᵏˡ (∂gⱼˡ/∂xⁱ + ∂gᵢˡ/∂xʲ - ∂gᵢⱼ/∂xˡ)"""
         g_x = self.compute_g_state_dependent(x)
         Gamma = np.zeros((self.n, self.n, self.n))
         
         for k in range(self.n):
             for i in range(self.n):
                 for j in range(self.n):
+                    # Compute partial derivatives via finite difference
                     dg_dxi = np.zeros((self.n, self.n))
                     dg_dxj = np.zeros((self.n, self.n))
                     dg_dxl = np.zeros((self.n, self.n, self.n))
@@ -278,6 +262,7 @@ class GeometryOfAwareness:
                         g_minus = self.compute_g_state_dependent(x_min)
                         dg_dxl[:, :] = (g_plus - g_minus) / (2 * eps)
                     
+                    # Γᵏᵢⱼ = (1/2) gᵏˡ (∂gⱼˡ/∂xⁱ + ∂gᵢˡ/∂xʲ - ∂gᵢⱼ/∂xˡ)
                     sum_term = dg_dxi[j, :] + dg_dxj[i, :] - dg_dxl[i, j]
                     g_inv = np.linalg.inv(g_x)
                     Gamma[k, i, j] = 0.5 * np.sum(g_inv[k, :] * sum_term)
@@ -285,10 +270,13 @@ class GeometryOfAwareness:
         return Gamma
     
     def compute_riemann_scalar(self, x):
-        """Scalar curvature via Christoffel norm approximation"""
+        """Scalar curvature R = gⁱʲ Rᵢⱼ (contraction of Riemann tensor)"""
         g_x = self.compute_g_state_dependent(x)
         Gamma = self.compute_christoffel(x, eps=1e-4)
         
+        # Approximate Riemann via Christoffel contraction
+        # Ricci tensor: Rᵢⱼ = ∂Γᵏᵢⱼ/∂xᵏ - ... (simplified)
+        # For demonstration: use sum of Christoffel squared as curvature proxy
         R_component = 0.0
         for k in range(self.n):
             for i in range(self.n):
@@ -296,18 +284,18 @@ class GeometryOfAwareness:
                     R_component += Gamma[k, i, j]**2
         
         g_inv = np.linalg.inv(g_x)
-        R = np.sum(g_inv) * np.sqrt(R_component) * 0.01
+        R = np.sum(g_inv) * np.sqrt(R_component) * 0.01  # normalized scalar curvature
         return R
     
+    # Phase sweep utility
     def run_sweep(self, trust_vals, trauma_vals, runs_per_cell=15, steps=800):
-        """Phase space sweep"""
         results = {}
         for t0 in trust_vals:
             for at in trauma_vals:
                 key = (t0, at)
                 outcomes = {'H':0, 'R':0, 'T':0, 'L':0, 'cond_mean':[], 'core_C':[]}
                 for r in range(runs_per_cell):
-                    self.reset(trust_base=t0, w_T=at)
+                    self.reset(trust_base=t0, w_T=at)  # fast reset (no __init__)
                     x = np.random.uniform(-0.3, 0.3, self.n)
                     for _ in range(steps):
                         x, _, _ = self.step(x)
@@ -325,16 +313,16 @@ class GeometryOfAwareness:
                     else:
                         outcomes['L'] += 1
                     outcomes['cond_mean'].append(np.mean(self.history['cond_g'][-100:]))
-                    core_edges = [(1,2),(2,3),(3,4),(1,3)]
+                    core_edges = [(1,2),(2,3),(3,4),(1,3)]  # Mem-Nar-Bel-Id
                     core_C = np.mean([self.C[i,j] for i,j in core_edges])
                     outcomes['core_C'].append(core_C)
-                results[key] = {k: np.mean(v) if isinstance(v, list) else v for k,v in outcomes.items() if not isinstance(v, list)}
+                results[key] = {k: np.mean(v) if 'mean' in k else np.sum(v)/runs_per_cell for k,v in outcomes.items() if k != 'cond_mean' and k != 'core_C'}
                 results[key]['cond_mean'] = np.mean(outcomes['cond_mean'])
                 results[key]['core_C'] = np.mean(outcomes['core_C'])
         return results
     
+    # Therapy protocol
     def run_therapy(self, pre_steps=400, therapy_steps=240, trust_lift=0.18):
-        """Therapy protocol"""
         self.trust_base += trust_lift
         x = np.random.uniform(-0.2, 0.2, self.n)
         for _ in range(pre_steps):
@@ -373,11 +361,3 @@ class GeometryOfAwareness:
             'stable': max_abs_eig < 1.0,
             'eq_potential': self.potential(x)[0]
         }
-    
-    def signed_fraction(self):
-        """Fraction of C_ij that are negative (inhibitory)"""
-        return np.mean(self.C < 0)
-    
-    def inhibitory_strength(self):
-        """Sum of absolute values of negative couplings"""
-        return np.sum(np.abs(self.C[self.C < 0]))
