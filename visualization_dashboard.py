@@ -161,14 +161,18 @@ def plot_therapy_intervention(model, pre_steps=300, therapy_steps=150, figsize=(
     ax.legend()
     ax.grid(True, alpha=0.3)
     
-    # Condition number improvement
+    # Condition number (metric anisotropy)
     ax = axes[1, 0]
     ax.semilogy(range(pre_steps), cond_hist[:pre_steps], 'b.', alpha=0.5, label=f'Pre (mean={pre_cond:.2f})')
     ax.semilogy(range(pre_steps, len(cond_hist)), cond_hist[pre_steps:], 'g.', alpha=0.5, label=f'Post (mean={post_cond:.2f})')
     ax.axvline(pre_steps, color='red', linestyle='--', linewidth=2, alpha=0.7)
     ax.set_xlabel('Step')
     ax.set_ylabel('cond(g)')
-    ax.set_title(f'Metric Stability: {100*(pre_cond-post_cond)/pre_cond:.1f}% improvement')
+    
+    # Report change in condition number accurately (no "improvement" label)
+    cond_change = ((post_cond - pre_cond) / pre_cond) * 100
+    direction = "↑ more anisotropic" if cond_change > 0 else "↓ more isotropic"
+    ax.set_title(f'Metric Anisotropy: {abs(cond_change):.1f}% {direction}')
     ax.legend()
     ax.grid(True, alpha=0.3, which='both')
     
@@ -236,23 +240,25 @@ def plot_phase_diagram(model, n_trust=6, n_trauma=6, figsize=(16, 5)):
     return fig
 
 def plot_metric_geometry(model, n_steps=500):
-    """Plot metric properties: condition number, Christoffel, curvature"""
+    """Plot metric properties: condition number, Christoffel norm (geodesic deviation)"""
     model.reset()
     x = np.random.uniform(-0.3, 0.3, model.n)
     
     cond_samples = []
-    R_samples = []
+    christoffel_norms = []
     
-    for _ in range(n_steps):
+    for step_idx in range(n_steps):
         x, _, cond = model.step(x)
         cond_samples.append(cond)
         
-        if _%50 == 0:  # Compute Riemann periodically (expensive)
+        if step_idx % 50 == 0:  # Compute Christoffel norm periodically (expensive)
             try:
-                R = model.compute_riemann_scalar(x)
-                R_samples.append(R)
+                Gamma = model.compute_christoffel(x, eps=1e-4)
+                # ||Γ|| = sqrt(sum of all components squared) — measures manifold curvature
+                christoffel_norm = np.sqrt(np.sum(Gamma**2))
+                christoffel_norms.append(christoffel_norm)
             except:
-                R_samples.append(0)
+                christoffel_norms.append(0)
     
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle(f'Metric Geometry Properties (n={model.n})', fontsize=14, fontweight='bold')
@@ -263,18 +269,18 @@ def plot_metric_geometry(model, n_steps=500):
     ax.fill_between(range(len(cond_samples)), cond_samples, alpha=0.3)
     ax.set_xlabel('Step')
     ax.set_ylabel('Condition Number cond(g)')
-    ax.set_title('Metric Conditioning Along Trajectory')
+    ax.set_title('Metric Conditioning: Anisotropy Growth')
     ax.grid(True, alpha=0.3, which='both')
     ax.legend()
     
-    # Scalar curvature samples
+    # Christoffel norm (geodesic deviation / manifold curvature)
     ax = axes[1]
-    steps_R = [i*50 for i in range(len(R_samples))]
-    ax.plot(steps_R, R_samples, 'ro-', markersize=6, linewidth=2, label='R(x)')
-    ax.fill_between(steps_R, R_samples, alpha=0.3, color='red')
+    steps_gamma = [i*50 for i in range(len(christoffel_norms))]
+    ax.plot(steps_gamma, christoffel_norms, 'mo-', markersize=6, linewidth=2, label='||Γ|| = geodesic deviation')
+    ax.fill_between(steps_gamma, christoffel_norms, alpha=0.3, color='magenta')
     ax.set_xlabel('Step (sampled every 50)')
-    ax.set_ylabel('Scalar Curvature R(x)')
-    ax.set_title('Riemannian Curvature Proxy')
+    ax.set_ylabel('Christoffel Norm ||Γ||')
+    ax.set_title('Manifold Curvature: Quantified via Christoffel Symbols')
     ax.grid(True, alpha=0.3)
     ax.legend()
     
@@ -284,7 +290,7 @@ def plot_metric_geometry(model, n_steps=500):
 def plot_lyapunov_stability(model, figsize=(12, 8)):
     """Plot Lyapunov eigenvalue distributions across basins and trust levels"""
     fig, axes = plt.subplots(2, 2, figsize=figsize)
-    fig.suptitle(f'Lyapunov Stability Analysis (n={model.n})', fontsize=14, fontweight='bold')
+    fig.suptitle('Lyapunov Stability (Discrete Map)', fontsize=14, fontweight='bold')
     
     basins = ['H', 'R']
     trusts = [0.4, 0.8]
@@ -296,17 +302,17 @@ def plot_lyapunov_stability(model, figsize=(12, 8)):
         eigs = lya['eigenvalues']
         max_eig = lya['max_abs_eigenvalue']
         
-        # Plot eigenvalue magnitudes
+        # Plot eigenvalue magnitudes (display bar heights = |λ|; title shows spectral radius ρ(J))
         eig_mags = np.abs(eigs.real)
         eig_mags_sorted = np.sort(eig_mags)[::-1]
-        
+
         colors_list = ['g' if e < 1 else 'r' for e in eig_mags_sorted]
         ax.bar(range(len(eig_mags_sorted)), eig_mags_sorted, color=colors_list, alpha=0.7, edgecolor='black')
-        ax.axhline(1.0, color='red', linestyle='--', linewidth=2, label='Stability boundary (|λ|=1)')
-        
+        ax.axhline(1.0, color='red', linestyle='--', linewidth=2, label='Stability boundary (ρ(J)=1)')
+
         basin_name = {'H': 'Healthy', 'R': 'Rigid'}[basin]
         status = '✓ STABLE' if lya['stable'] else '✗ UNSTABLE'
-        ax.set_title(f'{basin_name} Basin (τ={trust})\nmax|λ|={max_eig:.4f} {status}')
+        ax.set_title(f'{basin_name} Basin (τ={trust})\nρ(J)={max_eig:.4f} {status}')
         ax.set_xlabel('Eigenvalue Index')
         ax.set_ylabel('|λ| (Magnitude)')
         ax.set_ylim([0, max(eig_mags_sorted)*1.2])

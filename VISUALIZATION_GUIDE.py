@@ -12,6 +12,30 @@ Each PNG file is ~300-450 KB and can be opened with:
 Below is a description of each visualization:
 """
 
+# --- Lyapunov / Stability Convention (IMPORTANT) -----------------------------
+# The Lyapunov stability plots in this repo report eigenvalues of the *discrete-time*
+# update map linearization:
+#
+#     x_{t+1} = F(x_t),   J = dF/dx
+#
+# For the metric-aware gradient step used here:
+#
+#     x_{t+1} = x_t - dt * g(x_t)^{-1} * ∇V(x_t)
+#
+# the local Jacobian at a point x* is:
+#
+#     J(x*) = I - dt * g(x*)^{-1} * Hess(V)(x*)
+#
+# Stability is assessed in *discrete time*:
+#   - Locally asymptotically stable  ⇔  spectral_radius(J) = max |eig(J)| < 1
+#   - Neutral boundary              ⇔  max |eig(J)| ≈ 1
+#   - Unstable                      ⇔  max |eig(J)| > 1
+#
+# Note: A separatrix (basin boundary) is a *global* object in state space and may
+# not lie on a straight-line interpolation between basin centers in nD. Therefore,
+# failure to find an unstable point along a direct H→R chord does not imply the
+# absence of a separatrix; it only means that 1D probe did not intersect it.
+# -----------------------------------------------------------------------------
 VISUALIZATIONS = {
     "01_dynamics_trajectory.png": {
         "file_size": "451 KB",

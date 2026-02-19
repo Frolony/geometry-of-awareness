@@ -186,31 +186,49 @@ class GeometryOfAwareness:
         
         return x1, lam, cond
     
-    def compute_jacobian(self, x0, trust=0.7, eps=1e-6, dt=0.08):
-        """Numerical Jacobian (pure: no mutation of C, g, history)"""
-        # Snapshot state
-        C_orig = self.C.copy()
-        g_orig = self.g.copy()
-        hist_orig = {k: v.copy() if isinstance(v, list) else v for k, v in self.history.items()}
-        rbf_orig = self.rbf_centers.copy()
+    def compute_jacobian(self, x0, trust=0.7, eps=1e-5, dt=0.08):
+        """
+        Analytical Jacobian of discrete map: J = I - dt*g_inv*Hess_V(x0)
         
-        try:
-            x0 = np.asarray(x0).flatten().copy()
-            J = np.zeros((self.n, self.n))
-            f0, _, _ = self.step(x0.copy(), trust=trust, dt=dt)
-            
-            for i in range(self.n):
-                x_plus = x0.copy()
-                x_plus[i] += eps
-                f_plus, _, _ = self.step(x_plus, trust=trust, dt=dt)
-                J[:, i] = (f_plus - f0) / eps
-            return J
-        finally:
-            # Restore state
-            self.C = C_orig
-            self.g = g_orig
-            self.history = hist_orig
-            self.rbf_centers = rbf_orig
+        Pure function: no mutation of state.
+        Computed analytically (not numerically) to avoid noise amplification.
+        
+        Args:
+            x0: Point at which to evaluate Jacobian
+            trust: Trust parameter (not used, kept for API compatibility)
+            eps: Finite-difference step for Hessian (default 1e-5)
+            dt: Discrete time step (default 0.08)
+        
+        Returns:
+            J: n×n Jacobian matrix of the discrete map dx -> x_next
+        """
+        x0 = np.asarray(x0).flatten().copy()
+        
+        # Compute Hessian of potential via finite differences
+        # H[i,j] = ∂²V/∂x_i∂x_j
+        H = np.zeros((self.n, self.n))
+        for i in range(self.n):
+            for j in range(self.n):
+                x_pp = x0.copy(); x_pp[i] += eps; x_pp[j] += eps
+                x_pm = x0.copy(); x_pm[i] += eps; x_pm[j] -= eps
+                x_mp = x0.copy(); x_mp[i] -= eps; x_mp[j] += eps
+                x_mm = x0.copy(); x_mm[i] -= eps; x_mm[j] -= eps
+                
+                V_pp, _ = self.potential(x_pp)
+                V_pm, _ = self.potential(x_pm)
+                V_mp, _ = self.potential(x_mp)
+                V_mm, _ = self.potential(x_mm)
+                
+                H[i, j] = (V_pp - V_pm - V_mp + V_mm) / (4 * eps**2)
+        
+        # Compute metric at x0
+        g_x = self.compute_g_state_dependent(x0)
+        g_inv = np.linalg.inv(g_x)
+        
+        # Jacobian: J = I - dt * g_inv * H
+        J = np.eye(self.n) - dt * (g_inv @ H)
+        
+        return J
     
     def compute_christoffel(self, x, eps=1e-4):
         """Christoffel symbols Γᵏᵢⱼ = (1/2) gᵏˡ (∂gⱼˡ/∂xⁱ + ∂gᵢˡ/∂xʲ - ∂gᵢⱼ/∂xˡ)"""
