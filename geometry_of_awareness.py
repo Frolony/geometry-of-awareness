@@ -3,6 +3,7 @@ from scipy.linalg import eigh
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import cdist
 
+
 class GeometryOfAwareness:
     """
     Geometry of Awareness Framework v1.0
@@ -13,11 +14,10 @@ class GeometryOfAwareness:
     - Therapy protocol support
     - Phase-diagram sweep utilities
     """
-    
     def __init__(self, n=7, alpha=0.65, rho=0.018, eta0=0.055, 
                  trust_base=0.65, trust_vol=0.12, surprisal_amp=0.8,
                  emo_weight=1.2, grad_weight=0.9, social_weight=0.7,
-                 seed=42):
+                 w_T=4.0, seed=42):
         np.random.seed(seed)
         self.n = n
         self.alpha = alpha
@@ -33,7 +33,7 @@ class GeometryOfAwareness:
         self.mu_R = np.array([0.25, 0.70, 0.30, 0.75, 0.75, 0.40, 0.20])  # Rigid (high Bel/Id)
         self.w_R = 1.45
         self.mu_T = np.array([-0.6, -0.4, -0.5, -0.3, -0.7, 0.1, -0.2])   # Trauma repulsor center
-        self.w_T = 4.0
+        self.w_T = w_T
         self.sigma_T = 0.82
         
         # Salience parameters
@@ -123,6 +123,19 @@ class GeometryOfAwareness:
         
         return x1, lam, cond
     
+    def compute_jacobian(self, x0, trust=0.7, eps=1e-6, dt=0.08):
+        """Numerical Jacobian of the map x -> step(x, trust=trust)"""
+        x0 = np.asarray(x0).flatten().copy()
+        J = np.zeros((self.n, self.n))
+        f0, _, _ = self.step(x0.copy(), trust=trust, dt=dt)  # one step
+        
+        for i in range(self.n):
+            x_plus = x0.copy()
+            x_plus[i] += eps
+            f_plus, _, _ = self.step(x_plus, trust=trust, dt=dt)
+            J[:, i] = (f_plus - f0) / eps
+        return J
+    
     # Phase sweep utility
     def run_sweep(self, trust_vals, trauma_vals, runs_per_cell=15, steps=800):
         results = {}
@@ -168,3 +181,4 @@ class GeometryOfAwareness:
             x, _, _ = self.step(x, therapy_mode=True)
         post_cond = np.mean(self.history['cond_g'][-50:])
         return pre_cond, post_cond, x
+
