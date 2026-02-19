@@ -1,4 +1,6 @@
 """Phase diagram sweep: trust vs trauma parameter space"""
+import sys
+sys.path.insert(0, '..')
 import numpy as np
 import matplotlib.pyplot as plt
 from geometry_of_awareness import GeometryOfAwareness

@@ -1,4 +1,6 @@
 """Basic simulation example: 1000-step trajectory through awareness manifold"""
+import sys
+sys.path.insert(0, '..')
 import numpy as np
 import matplotlib.pyplot as plt
 from geometry_of_awareness import GeometryOfAwareness
