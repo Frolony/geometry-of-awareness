@@ -1,1 +1,89 @@
-$$\begin{array}{rll} \text{\textbf{Structural Memory:}} & \operatorname{HDN}(g^{(8)}, x_0) & \text{Planck-scale information density} \\ \text{\textbf{Projection Mapping:}} & \Pi_{\ell_1 \to \ell_2}(g^{(\ell_1)}, g^{(\ell_2)}) & \text{Gaussian convolution operator } K_\ell \\ \text{\textbf{Active State:}} & \operatorname{TP}(g^{(\ell)}, t, x) \implies \operatorname{HDN}(g^{(\ell)}, x) & \text{Active attraction } \nabla V^{(\ell)} \\ \text{\textbf{Residual Curvature:}} & \operatorname{Residual}(g^{(\ell_2)}, x_0) & \text{Macro-scale persistence of micro-wounds} \\ \text{\textbf{Healing Transformation:}} & \operatorname{HP}(g^{(\ell)}, t_1, t_2, U) \implies \Delta \Vert{}\beta_{ij}^{(\ell)}\Vert{} < 0 & \text{Monotonic reduction of metric strain} \end{array}$$
+
+### Core Predicates (revised)
+
+**1. Resolution**  
+\[
+\operatorname{Res}(g^{(\ell)}, \ell)
+\]  
+\(g^{(\ell)}\) is a Riemannian metric (or metric-like tensor field) at discrete resolution level \(\ell \in \{0,\dots,8\}\).
+
+**2. Projection**  
+\[
+\Pi_{\ell_1 \to \ell_2}(g^{(\ell_1)}, g^{(\ell_2)})
+\]  
+\(g^{(\ell_2)}\) is obtained from \(g^{(\ell_1)}\) by the Gaussian (or more general) coarse-graining map with \(\ell_1 > \ell_2\).
+
+**3. High-Density Node**  
+\[
+\operatorname{HDN}(g^{(\ell)}, x)
+\]  
+At point \(x\), the curvature invariants (or \(\det g\), Kretschmann, etc.) exceed a threshold at level \(\ell\). These are the black-hole / information-density peaks.
+
+**4. Trauma Point**  
+\[
+\operatorname{TP}(g^{(\ell)}, t, x)
+\]  
+A high-density node that is *dynamically active* as an attractor in the potential at time \(t\).  
+(Every trauma point is an HDN, but not every HDN need be currently traumatic.)
+
+**5. Potential**  
+\[
+V^{(\ell)}(x,t)
+\]  
+The scale-dependent potential that generates the force \(-\nabla V^{(\ell)}\).
+
+**6. Flow**  
+\[
+\operatorname{Flow}(x(t), g^{(\ell)}, V^{(\ell)})
+\]  
+The trajectory \(x(t)\) obeys the over-damped (or geodesic + force) equation defined by the current metric and potential.
+
+**7. Coherence**  
+\[
+\operatorname{Coh}(g^{(\ell)}, t, U)
+\]  
+On a region \(U\), the metric is close to a reference (flatter / higher-symmetry) metric, or the particle flow is aligned with the local geodesics of steepest descent.
+
+**8. Bias**  
+\[
+\beta_{ij}^{(\ell)}(x,t) = g_{ij}^{(\ell)}(x,t) - g_{ij}^{(\ell)\text{ref}}(x)
+\]  
+(or the normalized version you had earlier). This is a *field*, not merely a predicate; the predicate form can be \(\operatorname{Biased}(g^{(\ell)}, x, t)\) when \(\|\beta\|\) exceeds a threshold.
+
+**9. Healing Process**  
+\[
+\operatorname{HP}(g^{(\ell)}, t_1, t_2, U)
+\]  
+Between \(t_1\) and \(t_2\), on region \(U\), either:  
+- the depth of a trauma well decreases, or  
+- the residual curvature after projection decreases, or  
+- coherence on \(U\) increases.
+
+### Useful Derived / Relational Predicates
+
+- \(\operatorname{Residual}(g^{(\ell)}, x)\) — an HDN or TP that survives projection to level \(\ell\).  
+- \(\operatorname{Trapped}(x(t), \ell)\) — the trajectory remains inside a trauma basin at that resolution.  
+- \(\operatorname{Escaped}(x(t), \ell_1, \ell_2)\) — the particle was trapped at \(\ell_1\) but is no longer trapped after projection to \(\ell_2 < \ell_1\).
+
+### Example Formalizations (cleaned)
+
+**Initial sharp trauma**  
+\[
+\operatorname{TP}(g^{(8)}, t_0, x_0) \land \operatorname{HDN}(g^{(8)}, x_0)
+\]
+
+**Persistence under coarse-graining**  
+\[
+\operatorname{TP}(g^{(8)}, t_0, x_0) \land \Pi_{8\to 4}(g^{(8)}, g^{(4)}) \;\implies\; \operatorname{Residual}(g^{(4)}, x_0)
+\]
+
+**Healing at fine scale restores coherence**  
+\[
+\operatorname{HP}(g^{(8)}, t_1, t_2, U) \land t_3 > t_2 \;\implies\; \operatorname{Coh}(g^{(8)}, t_3, U)
+\]
+
+**Resolution-dependent escape (the key phenomenon the visualizer shows)**  
+\[
+\operatorname{Trapped}(x(t), 7) \land \Pi_{7\to 3}(g^{(7)}, g^{(3)}) \;\land\; \operatorname{Escaped}(x(t'), 7, 3)
+\]  
+for some \(t' > t\).
